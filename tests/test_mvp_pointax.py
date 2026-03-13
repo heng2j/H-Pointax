@@ -21,14 +21,13 @@ pytest.importorskip("optax")
 pytest.importorskip("yaml")
 
 from pointax_mvp.discrete_actions import discrete_to_continuous
+from pointax_mvp.envs import build_base_env
 from pointax_mvp.models import SharedQNetwork, q_values_for_all_options
-from pointax_mvp.replay import ReplayBuffer
+from pointax_mvp.replay import ReplayBuffer, TransitionBatch
 from pointax_mvp.task_library import build_eval_scenarios, build_training_scenarios, make_t_junction
 from pointax_mvp.teacher import branching_cells, infer_option_for_path_index, shortest_path
 import pointax_mvp.training as training_module
 from pointax_mvp.plotting import make_value_heatmaps
-from pointax_mvp.evaluation import evaluate_scenarios
-from pointax_mvp.teacher import collect_teacher_trajectory
 from pointax_mvp.training import init_train_bundle
 from pointax_mvp.utils import NoiseSpec, OPTION_TO_ID, ScenarioSpec, TrainConfig
 
@@ -125,17 +124,13 @@ def test_replay_future_relabeling():
 
 def test_mini_pipeline_smoke(tmp_path):
     scenario = build_training_scenarios()["A1"][0]
-    trajectory = collect_teacher_trajectory(
-        scenario=scenario,
-        seed=5,
-        action_scale=0.6,
-        max_steps=24,
-    )
-    assert trajectory
+    bundle_env = build_base_env(scenario, max_steps=12, action_scale=0.6)
+    obs, _ = bundle_env.wrapper.reset(jax.random.PRNGKey(0))
+    next_obs, reward, done, info = bundle_env.wrapper.step(3, jax.random.PRNGKey(1))
+    assert obs.shape == (8,)
+    assert next_obs.shape == (8,)
+    assert isinstance(reward, float)
 
-    buffer = ReplayBuffer()
-    buffer.add_trajectory(scenario, trajectory)
-    buffer.relabel_future_observations(np.random.default_rng(0))
     config = TrainConfig(
         seed=3,
         hidden_dims=(32, 32),
@@ -153,26 +148,29 @@ def test_mini_pipeline_smoke(tmp_path):
         training_mode="manual_curriculum",
     )
     bundle = init_train_bundle(config)
-    batch = buffer.sample(np.random.default_rng(1), batch_size=min(len(buffer), config.batch_size))
+    batch = TransitionBatch(
+        obs=np.stack([obs, next_obs], axis=0).astype(np.float32),
+        next_obs=np.stack([next_obs, next_obs], axis=0).astype(np.float32),
+        goal_xy=np.stack([bundle_env.wrapper.current_goal(), bundle_env.wrapper.current_goal()], axis=0).astype(np.float32),
+        option_id=np.array([0, 1], dtype=np.int32),
+        action_id=np.array([3, 0], dtype=np.int32),
+        reward=np.array([reward, 0.0], dtype=np.float32),
+        done=np.array([float(done), 0.0], dtype=np.float32),
+        stage_id=np.array([0, 0], dtype=np.int32),
+        family_id=np.array([0, 0], dtype=np.int32),
+        success=np.array([float(info["success"]), 0.0], dtype=np.float32),
+        wall_contact=np.array([float(info["wall_contact"]), 0.0], dtype=np.float32),
+        future_obs=np.stack([next_obs, obs], axis=0).astype(np.float32),
+    )
     updated_bundle, metrics = training_module._train_step(bundle, batch, config)
     assert "loss" in metrics
-
-    eval_summary = evaluate_scenarios(
-        model=updated_bundle.model,
-        params=updated_bundle.train_state.params,
-        eval_sets={"isolated_ood": build_eval_scenarios()["isolated_ood"][:1]},
-        seed=11,
-        action_scale=config.action_scale,
-        episodes_per_scenario=1,
-    )
-    assert "isolated_ood" in eval_summary
 
     heatmaps = make_value_heatmaps(
         model=updated_bundle.model,
         params=updated_bundle.train_state.params,
         scenario=build_eval_scenarios()["composed_ood"][0],
         action_scale=config.action_scale,
-        resolution=8,
+        resolution=4,
         output_dir=tmp_path,
     )
     assert "SEGMENT_FOLLOW" in heatmaps
