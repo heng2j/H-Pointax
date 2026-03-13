@@ -1,0 +1,3 @@
+extends: default_model.yaml
+run_name: no_curriculum
+training_mode: no_curriculum

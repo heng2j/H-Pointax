@@ -1,0 +1,21 @@
+seed: 7
+gamma: 0.97
+learning_rate: 0.0003
+batch_size: 128
+hidden_dims: [128, 128]
+embedding_dim: 32
+num_epochs: 10
+updates_per_stage: 200
+target_update_period: 20
+teacher_weight: 0.05
+hcrl_aux_weight: 0.05
+use_hcrl_aux: false
+action_scale: 0.6
+max_steps_per_episode: 150
+trajectories_per_scenario: 6
+stage_fractions: [0.2, 0.2, 0.2, 0.2, 0.2]
+checkpoint_every: 1
+eval_every: 1
+num_eval_episodes: 4
+heatmap_resolution: 80
+run_name: default
