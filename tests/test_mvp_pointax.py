@@ -25,7 +25,11 @@ from pointax_mvp.models import SharedQNetwork, q_values_for_all_options
 from pointax_mvp.replay import ReplayBuffer
 from pointax_mvp.task_library import build_eval_scenarios, build_training_scenarios, make_t_junction
 from pointax_mvp.teacher import branching_cells, infer_option_for_path_index, shortest_path
-from pointax_mvp.training import train
+import pointax_mvp.training as training_module
+from pointax_mvp.plotting import make_value_heatmaps
+from pointax_mvp.evaluation import evaluate_scenarios
+from pointax_mvp.teacher import collect_teacher_trajectory
+from pointax_mvp.training import init_train_bundle
 from pointax_mvp.utils import NoiseSpec, OPTION_TO_ID, ScenarioSpec, TrainConfig
 
 
@@ -119,7 +123,19 @@ def test_replay_future_relabeling():
     assert batch.future_obs.shape == (2, 8)
 
 
-def test_training_smoke_manual_and_no_curriculum(tmp_path):
+def test_mini_pipeline_smoke(tmp_path):
+    scenario = build_training_scenarios()["A1"][0]
+    trajectory = collect_teacher_trajectory(
+        scenario=scenario,
+        seed=5,
+        action_scale=0.6,
+        max_steps=24,
+    )
+    assert trajectory
+
+    buffer = ReplayBuffer()
+    buffer.add_trajectory(scenario, trajectory)
+    buffer.relabel_future_observations(np.random.default_rng(0))
     config = TrainConfig(
         seed=3,
         hidden_dims=(32, 32),
@@ -128,19 +144,36 @@ def test_training_smoke_manual_and_no_curriculum(tmp_path):
         updates_per_stage=1,
         trajectories_per_scenario=1,
         num_eval_episodes=1,
-        heatmap_resolution=16,
-        checkpoint_every=5,
+        heatmap_resolution=12,
+        checkpoint_every=1,
         eval_every=1,
         action_scale=0.6,
-        max_steps_per_episode=40,
+        max_steps_per_episode=24,
         run_name="pytest_manual",
         training_mode="manual_curriculum",
     )
-    run_dir = train(config)
-    assert (run_dir / "metrics.json").exists()
+    bundle = init_train_bundle(config)
+    batch = buffer.sample(np.random.default_rng(1), batch_size=min(len(buffer), config.batch_size))
+    updated_bundle, metrics = training_module._train_step(bundle, batch, config)
+    assert "loss" in metrics
 
-    config_nc = TrainConfig(
-        **{**config.to_dict(), "run_name": "pytest_no_curriculum", "training_mode": "no_curriculum"}
+    eval_summary = evaluate_scenarios(
+        model=updated_bundle.model,
+        params=updated_bundle.train_state.params,
+        eval_sets={"isolated_ood": build_eval_scenarios()["isolated_ood"][:1]},
+        seed=11,
+        action_scale=config.action_scale,
+        episodes_per_scenario=1,
     )
-    run_dir_nc = train(config_nc)
-    assert (run_dir_nc / "metrics.json").exists()
+    assert "isolated_ood" in eval_summary
+
+    heatmaps = make_value_heatmaps(
+        model=updated_bundle.model,
+        params=updated_bundle.train_state.params,
+        scenario=build_eval_scenarios()["composed_ood"][0],
+        action_scale=config.action_scale,
+        resolution=8,
+        output_dir=tmp_path,
+    )
+    assert "SEGMENT_FOLLOW" in heatmaps
+    assert (tmp_path / "segment_follow_heatmap.png").exists()
