@@ -7,7 +7,7 @@ import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, Mapping, Sequence, Tuple
 
 import numpy as np
 import yaml
@@ -115,6 +115,9 @@ def timestamp() -> str:
 
 def load_yaml_config(path: os.PathLike) -> Dict[str, Any]:
     config_path = Path(path)
+    if config_path.suffix == ".json":
+        with config_path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
     with config_path.open("r", encoding="utf-8") as handle:
         raw = yaml.safe_load(handle) or {}
     extends = raw.pop("extends", None)
