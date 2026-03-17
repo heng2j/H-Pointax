@@ -1,0 +1,13 @@
+extends: default_model.yaml
+seed: 3
+hidden_dims: [32, 32]
+embedding_dim: 16
+batch_size: 8
+updates_per_stage: 1
+trajectories_per_scenario: 1
+max_steps_per_episode: 24
+num_eval_episodes: 1
+heatmap_resolution: 8
+checkpoint_every: 1
+eval_every: 1
+run_name: fast_smoke

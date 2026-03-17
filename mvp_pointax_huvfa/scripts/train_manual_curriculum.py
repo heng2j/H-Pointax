@@ -14,15 +14,20 @@ for path in (REPO_ROOT, MVP_ROOT):
         sys.path.insert(0, str(path))
 
 from pointax_mvp.training import train
-from pointax_mvp.utils import TrainConfig, load_yaml_config
+from pointax_mvp.utils import TrainConfig, apply_overrides, load_yaml_config
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
+    parser.add_argument("--results-root", default=None)
+    parser.add_argument("--override", action="append", default=[])
     args = parser.parse_args()
     payload = load_yaml_config(args.config)
     payload["training_mode"] = "manual_curriculum"
+    if args.results_root:
+        payload["results_root"] = args.results_root
+    payload = apply_overrides(payload, args.override)
     config = TrainConfig.from_mapping(payload)
     run_dir = train(config)
     print(run_dir)

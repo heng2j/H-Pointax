@@ -29,11 +29,7 @@ def resolve_run_dir(results_root: Path, run_name: str) -> Path:
     return candidates[-1]
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--results-root", required=True)
-    args = parser.parse_args()
-    results_root = Path(args.results_root)
+def build_comparison_plots(results_root: Path) -> Path:
     no_curriculum = resolve_run_dir(results_root, "no_curriculum")
     manual_curriculum = resolve_run_dir(results_root, "manual_curriculum")
     frames = []
@@ -48,6 +44,15 @@ def main() -> None:
     output_dir = ensure_dir(results_root / "plots")
     plot_main_comparison(pd.concat(frames, ignore_index=True).to_dict("records"), output_dir / "main_comparison.png")
     plot_learning_curve(pd.concat(learning_frames, ignore_index=True), output_dir / "learning_curve.png")
+    return output_dir
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--results-root", required=True)
+    args = parser.parse_args()
+    results_root = Path(args.results_root)
+    output_dir = build_comparison_plots(results_root)
     print(output_dir)
 
 

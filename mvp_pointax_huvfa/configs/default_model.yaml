@@ -19,3 +19,4 @@ eval_every: 1
 num_eval_episodes: 4
 heatmap_resolution: 80
 run_name: default
+results_root: mvp_pointax_huvfa/results

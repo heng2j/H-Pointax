@@ -151,7 +151,7 @@ def update_latest_alias(run_dir: Path) -> None:
 def train(config: TrainConfig) -> Path:
     training_scenarios = build_training_scenarios()
     eval_sets = build_eval_scenarios()
-    run_dir = ensure_dir(Path("mvp_pointax_huvfa/results") / config.run_name / timestamp())
+    run_dir = ensure_dir(Path(config.results_root) / config.run_name / timestamp())
     save_json(run_dir / "config.json", config.to_dict())
     train_bundle = init_train_bundle(config)
     global_buffer = ReplayBuffer()

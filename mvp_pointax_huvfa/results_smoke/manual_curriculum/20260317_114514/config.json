@@ -1,0 +1,34 @@
+{
+  "action_scale": 0.6,
+  "batch_size": 8,
+  "checkpoint_every": 1,
+  "embedding_dim": 16,
+  "eval_every": 1,
+  "gamma": 0.97,
+  "hcrl_aux_weight": 0.05,
+  "heatmap_resolution": 8,
+  "hidden_dims": [
+    32,
+    32
+  ],
+  "learning_rate": 0.0003,
+  "max_steps_per_episode": 24,
+  "num_epochs": 10,
+  "num_eval_episodes": 1,
+  "results_root": "mvp_pointax_huvfa/results_smoke",
+  "run_name": "manual_curriculum",
+  "seed": 3,
+  "stage_fractions": [
+    0.2,
+    0.2,
+    0.2,
+    0.2,
+    0.2
+  ],
+  "target_update_period": 20,
+  "teacher_weight": 0.05,
+  "training_mode": "manual_curriculum",
+  "trajectories_per_scenario": 1,
+  "updates_per_stage": 1,
+  "use_hcrl_aux": false
+}

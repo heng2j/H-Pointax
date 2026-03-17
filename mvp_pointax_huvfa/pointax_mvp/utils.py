@@ -7,7 +7,7 @@ import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, Mapping, Sequence, Tuple
+from typing import Any, Dict, Iterable, Mapping, MutableMapping, Sequence, Tuple
 
 import numpy as np
 import yaml
@@ -81,6 +81,7 @@ class TrainConfig:
     heatmap_resolution: int = 80
     run_name: str = "default"
     training_mode: str = "manual_curriculum"
+    results_root: str = "mvp_pointax_huvfa/results"
 
     @classmethod
     def from_mapping(cls, payload: Mapping[str, Any]) -> "TrainConfig":
@@ -126,6 +127,38 @@ def load_yaml_config(path: os.PathLike) -> Dict[str, Any]:
         parent.update(raw)
         return parent
     return raw
+
+
+def parse_override_value(raw_value: str) -> Any:
+    lowered = raw_value.lower()
+    if lowered in {"true", "false"}:
+        return lowered == "true"
+    try:
+        return int(raw_value)
+    except ValueError:
+        pass
+    try:
+        return float(raw_value)
+    except ValueError:
+        pass
+    if raw_value.startswith("[") or raw_value.startswith("{"):
+        try:
+            return json.loads(raw_value)
+        except json.JSONDecodeError:
+            return raw_value
+    if "," in raw_value:
+        return [parse_override_value(item.strip()) for item in raw_value.split(",")]
+    return raw_value
+
+
+def apply_overrides(config: MutableMapping[str, Any], overrides: Sequence[str]) -> Dict[str, Any]:
+    updated = dict(config)
+    for entry in overrides:
+        if "=" not in entry:
+            raise ValueError(f"Invalid override '{entry}'. Expected KEY=VALUE.")
+        key, raw_value = entry.split("=", 1)
+        updated[key] = parse_override_value(raw_value)
+    return updated
 
 
 def save_json(path: os.PathLike, payload: Mapping[str, Any]) -> None:

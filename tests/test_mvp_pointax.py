@@ -29,7 +29,8 @@ from pointax_mvp.teacher import branching_cells, infer_option_for_path_index, sh
 import pointax_mvp.training as training_module
 from pointax_mvp.plotting import make_value_heatmaps
 from pointax_mvp.training import init_train_bundle
-from pointax_mvp.utils import NoiseSpec, OPTION_TO_ID, ScenarioSpec, TrainConfig
+from pointax_mvp.utils import NoiseSpec, OPTION_TO_ID, ScenarioSpec, TrainConfig, apply_overrides
+from scripts.plot_results import build_comparison_plots
 
 
 def _count_marker(layout, marker):
@@ -122,6 +123,16 @@ def test_replay_future_relabeling():
     assert batch.future_obs.shape == (2, 8)
 
 
+def test_apply_overrides_parses_scalar_and_list_values():
+    updated = apply_overrides(
+        {"updates_per_stage": 10, "use_hcrl_aux": False},
+        ["updates_per_stage=3", "use_hcrl_aux=true", "hidden_dims=32,64"],
+    )
+    assert updated["updates_per_stage"] == 3
+    assert updated["use_hcrl_aux"] is True
+    assert updated["hidden_dims"] == [32, 64]
+
+
 def test_mini_pipeline_smoke(tmp_path):
     scenario = build_training_scenarios()["A1"][0]
     bundle_env = build_base_env(scenario, max_steps=12, action_scale=0.6)
@@ -175,3 +186,22 @@ def test_mini_pipeline_smoke(tmp_path):
     )
     assert "SEGMENT_FOLLOW" in heatmaps
     assert (tmp_path / "segment_follow_heatmap.png").exists()
+
+
+def test_build_comparison_plots_from_synthetic_runs(tmp_path):
+    for run_name in ("manual_curriculum", "no_curriculum"):
+        run_dir = tmp_path / run_name / "latest"
+        run_dir.mkdir(parents=True)
+        (run_dir / "eval_summary.csv").write_text(
+            "run_name,stage_index,group,success_rate,normalized_efficiency\n"
+            f"{run_name},1,isolated_ood,0.5,0.7\n",
+            encoding="utf-8",
+        )
+        (run_dir / "learning_curve.csv").write_text(
+            "run_name,stage_index,ood_success_rate\n"
+            f"{run_name},1,0.5\n",
+            encoding="utf-8",
+        )
+    output_dir = build_comparison_plots(tmp_path)
+    assert (output_dir / "main_comparison.png").exists()
+    assert (output_dir / "learning_curve.png").exists()

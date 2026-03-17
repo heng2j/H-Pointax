@@ -42,6 +42,24 @@ python mvp_pointax_huvfa/scripts/plot_results.py --results-root mvp_pointax_huvf
 python mvp_pointax_huvfa/scripts/make_value_heatmaps.py --run-dir mvp_pointax_huvfa/results/manual_curriculum/latest
 ```
 
+Quick smoke run:
+
+```bash
+python mvp_pointax_huvfa/scripts/run_demo_suite.py \
+  --config mvp_pointax_huvfa/configs/fast_smoke.yaml \
+  --results-root mvp_pointax_huvfa/results_smoke
+```
+
+Override config values from the CLI:
+
+```bash
+python mvp_pointax_huvfa/scripts/train_manual_curriculum.py \
+  --config mvp_pointax_huvfa/configs/manual_curriculum.yaml \
+  --override updates_per_stage=20 \
+  --override trajectories_per_scenario=3 \
+  --override heatmap_resolution=40
+```
+
 ## Outputs
 
 Each run writes:
