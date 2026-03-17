@@ -95,14 +95,32 @@ def infer_option_for_path_index(path: Sequence[Cell], path_index: int, branch_ce
 
 def choose_recenter_action(wrapper, current_cell: Cell) -> int:
     center = wrapper.cell_to_world(current_cell)
-    delta = center - wrapper.current_true_position()
-    return direction_to_action(delta)
+    control = center - wrapper.current_true_position() - 0.35 * wrapper.current_velocity()
+    return direction_to_action(control)
 
 
 def choose_path_action(wrapper, next_cell: Cell) -> int:
     target_xy = wrapper.cell_to_world(next_cell)
-    delta = target_xy - wrapper.current_true_position()
-    return direction_to_action(delta)
+    control = target_xy - wrapper.current_true_position() - 0.35 * wrapper.current_velocity()
+    return direction_to_action(control)
+
+
+def plan_from_current_cell(wrapper, free_mask: np.ndarray, current_cell: Cell, goal_cell: Cell) -> List[Cell]:
+    if free_mask[current_cell[0], current_cell[1]]:
+        return shortest_path(free_mask, current_cell, goal_cell)
+
+    frontier: deque[Cell] = deque([current_cell])
+    seen = {current_cell}
+    while frontier:
+        cell = frontier.popleft()
+        if 0 <= cell[0] < free_mask.shape[0] and 0 <= cell[1] < free_mask.shape[1] and free_mask[cell[0], cell[1]]:
+            return shortest_path(free_mask, cell, goal_cell)
+        for drow, dcol in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            next_cell = (cell[0] + drow, cell[1] + dcol)
+            if next_cell not in seen and 0 <= next_cell[0] < free_mask.shape[0] and 0 <= next_cell[1] < free_mask.shape[1]:
+                seen.add(next_cell)
+                frontier.append(next_cell)
+    raise ValueError(f"No reachable free cell from {current_cell}.")
 
 
 def collect_teacher_trajectory(
@@ -116,36 +134,33 @@ def collect_teacher_trajectory(
     key = jax.random.PRNGKey(seed)
     obs, _ = wrapper.reset(key)
     free_mask = wrapper.free_cell_mask()
-    path = shortest_path(free_mask, scenario.start_cell, scenario.goal_cell)
     branch_cells = branching_cells(free_mask)
-    path_index = 1
-    current_path_cell = scenario.start_cell
     transitions: List[TeacherTransition] = []
+    final_success = False
 
     for step in range(max_steps or scenario.max_steps):
         key = jax.random.fold_in(key, step + 1)
         true_cell = wrapper.world_to_cell(wrapper.current_true_position())
-        if true_cell != current_path_cell:
-            current_path_cell = true_cell
-            while path_index < len(path) and path[path_index] == true_cell:
-                path_index += 1
-
-        if path_index >= len(path):
-            action_id = 8
-            controller_id = "A_STAR_NAVIGATION"
+        current_center = wrapper.cell_to_world(true_cell)
+        if np.linalg.norm(wrapper.current_true_position() - current_center) > 0.35:
+            action_id = choose_recenter_action(wrapper, true_cell)
+            controller_id = "RECOVER_RECENTER"
+            path = [true_cell, true_cell]
+            option_id = OPTION_TO_ID["SEGMENT_FOLLOW"]
         else:
-            next_cell = path[path_index]
-            target_center = wrapper.cell_to_world(next_cell)
-            current_center = wrapper.cell_to_world(true_cell)
-            if np.linalg.norm(wrapper.current_true_position() - current_center) > 0.35:
-                action_id = choose_recenter_action(wrapper, true_cell)
-                controller_id = "RECOVER_RECENTER"
+            try:
+                path = plan_from_current_cell(wrapper, free_mask, true_cell, scenario.goal_cell)
+            except ValueError:
+                return []
+            if len(path) <= 1:
+                action_id = 8
+                controller_id = "A_STAR_NAVIGATION"
+                option_id = OPTION_TO_ID["SEGMENT_FOLLOW"]
             else:
+                next_cell = path[1]
                 action_id = choose_path_action(wrapper, next_cell)
                 controller_id = "A_STAR_NAVIGATION"
-
-        option_path_index = max(0, min(path_index - 1, len(path) - 2))
-        option_id = infer_option_for_path_index(path, option_path_index, branch_cells)
+                option_id = infer_option_for_path_index(path, 0, branch_cells)
         next_obs, reward, done, info = wrapper.step(action_id, key)
         transitions.append(
             TeacherTransition(
@@ -166,5 +181,6 @@ def collect_teacher_trajectory(
         )
         obs = next_obs
         if done:
+            final_success = bool(info["success"])
             break
-    return transitions
+    return transitions if final_success else []

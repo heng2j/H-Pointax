@@ -7,7 +7,7 @@ Compact offline hierarchical value-learning MVP built on top of `pointax`.
 - Builds deterministic Pointax task families for corridors, turns, junctions, and composed OOD mazes.
 - Wraps Pointax with a discrete 9-action interface and controlled observation corruption.
 - Collects scripted teacher trajectories with option labels for `SEGMENT_FOLLOW` and `JUNCTION_RESOLVE`.
-- Trains a shared option-conditioned UVF critic with an optional HCRL-style auxiliary.
+- Trains a shared option-conditioned UVF critic with an optional HCRL-inspired auxiliary.
 - Evaluates no-curriculum vs manual-curriculum training and produces comparison plots and value heatmaps.
 
 ## Layout

@@ -11,7 +11,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from .discrete_actions import discrete_to_continuous
-from .utils import FAMILY_TO_ID, ScenarioSpec
+from .utils import FAMILY_TO_ID, ScenarioSpec, stage_order
 
 
 @dataclass
@@ -65,6 +65,7 @@ class DiscretePointaxWrapper:
             raise RuntimeError("Call reset() before step().")
 
         current_position = np.asarray(self.state.base_state.position, dtype=np.float32)
+        current_velocity = np.asarray(self.state.base_state.velocity, dtype=np.float32)
         action = self._apply_action_noise(action_id, key)
         obs, base_state, reward, done, info = self.env.step_env(
             key,
@@ -74,8 +75,7 @@ class DiscretePointaxWrapper:
         )
         obs_np = np.asarray(obs, dtype=np.float32)
         new_position = obs_np[:2].copy()
-        movement = np.linalg.norm(new_position - current_position)
-        wall_contact = movement < 0.02 and int(action_id) != 8
+        wall_contact = self._wall_contact_from_step(current_position, current_velocity, action, new_position)
         self._obs_history.append(obs_np.copy())
         wrapped_obs = self._corrupt_observation(obs_np, key, force_refresh=False)
         self.state = WrapperState(
@@ -179,7 +179,49 @@ class DiscretePointaxWrapper:
             return self._obs_history[-1].copy()
         return list(self._obs_history)[-delay - 1].copy()
 
+    def _wall_contact_from_step(
+        self,
+        old_position: np.ndarray,
+        old_velocity: np.ndarray,
+        action: np.ndarray,
+        new_position: np.ndarray,
+    ) -> bool:
+        velocity = np.clip(old_velocity, -float(self.params.max_velocity), float(self.params.max_velocity))
+        acceleration = action * float(self.params.motor_gear) / float(self.params.mass)
+        intended_velocity = np.clip(
+            velocity + acceleration * float(self.params.dt),
+            -float(self.params.max_velocity),
+            float(self.params.max_velocity),
+        )
+        intended_position = old_position + intended_velocity * float(self.params.dt)
+        correction_distance = float(np.linalg.norm(new_position - intended_position))
+        if correction_distance > 1e-4:
+            return True
+        return self._touching_wall(new_position)
+
+    def _touching_wall(self, position_xy: np.ndarray) -> bool:
+        current_cell = self.env._world_to_cell(jnp.asarray(position_xy, dtype=jnp.float32), self.params)
+        radius = float(self.params.robot_radius) + 1e-4
+        half_size = float(self.params.maze_size_scaling) * 0.5
+        for di in (-1, 0, 1):
+            for dj in (-1, 0, 1):
+                row = int(current_cell[0]) + di
+                col = int(current_cell[1]) + dj
+                if row < 0 or row >= int(self.params.map_length) or col < 0 or col >= int(self.params.map_width):
+                    continue
+                if int(self.params.maze_map[row, col]) != 1:
+                    continue
+                wall_center = np.asarray(self.env._cell_to_world(row, col, self.params), dtype=np.float32)
+                aabb_min = wall_center - half_size
+                aabb_max = wall_center + half_size
+                closest = np.clip(position_xy, aabb_min, aabb_max)
+                diff = position_xy - closest
+                if float(np.linalg.norm(diff)) < radius:
+                    return True
+        return False
+
     def _build_info(self, done: bool, reward: float, success: bool, wall_contact: bool) -> Dict[str, float]:
+        stage_id = stage_order().index(self.scenario.stage) if self.scenario.stage in stage_order() else -1
         return {
             "done": float(done),
             "reward": float(reward),
@@ -187,6 +229,7 @@ class DiscretePointaxWrapper:
             "wall_contact": float(wall_contact),
             "timeout": float(done and not success),
             "family_id": float(FAMILY_TO_ID[self.scenario.family]),
+            "stage_id": float(stage_id),
             "stage_name": self.scenario.stage,
             "scenario_name": self.scenario.name,
         }

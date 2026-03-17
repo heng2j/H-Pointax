@@ -89,6 +89,8 @@ def _train_step(bundle: CriticTrainBundle, batch, config: TrainConfig) -> Tuple[
             teacher_weight=config.teacher_weight,
             use_hcrl_aux=config.use_hcrl_aux,
             hcrl_aux_weight=config.hcrl_aux_weight,
+            contrastive_temperature=config.contrastive_temperature,
+            contrastive_logsumexp_penalty=config.contrastive_logsumexp_penalty,
         )
 
     (loss, metrics), grads = jax.value_and_grad(loss_fn, has_aux=True)(bundle.train_state.params)
@@ -109,15 +111,21 @@ def collect_stage_data(
     buffer = ReplayBuffer()
     seed_cursor = seed_offset
     for scenario in scenarios:
-        for _ in range(trajectories_per_scenario):
+        collected = 0
+        attempts = 0
+        max_attempts = max(trajectories_per_scenario * config.teacher_retry_limit, trajectories_per_scenario)
+        while collected < trajectories_per_scenario and attempts < max_attempts:
             trajectory = collect_teacher_trajectory(
                 scenario=scenario,
                 seed=seed_cursor,
                 action_scale=config.action_scale,
                 max_steps=config.max_steps_per_episode,
             )
-            buffer.add_trajectory(scenario, trajectory)
+            if trajectory:
+                buffer.add_trajectory(scenario, trajectory)
+                collected += 1
             seed_cursor += 1
+            attempts += 1
     return buffer
 
 

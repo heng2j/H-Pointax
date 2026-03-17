@@ -71,9 +71,12 @@ class TrainConfig:
     teacher_weight: float = 0.05
     hcrl_aux_weight: float = 0.05
     use_hcrl_aux: bool = False
+    contrastive_temperature: float = 0.1
+    contrastive_logsumexp_penalty: float = 0.01
     action_scale: float = 0.6
     max_steps_per_episode: int = 150
     trajectories_per_scenario: int = 6
+    teacher_retry_limit: int = 5
     stage_fractions: Tuple[float, ...] = (0.2, 0.2, 0.2, 0.2, 0.2)
     checkpoint_every: int = 1
     eval_every: int = 1

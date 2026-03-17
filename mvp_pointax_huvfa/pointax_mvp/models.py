@@ -38,6 +38,7 @@ class SharedQNetwork(nn.Module):
         self.q_head = nn.Dense(1)
         self.future_projection = nn.Dense(self.embedding_dim)
         self.goal_projection = nn.Dense(self.embedding_dim)
+        self.goal_query_projection = nn.Dense(self.embedding_dim)
 
     def encode_state(self, obs: jax.Array) -> jax.Array:
         return self.state_encoder(obs)
@@ -76,8 +77,9 @@ class SharedQNetwork(nn.Module):
         goal_embedding = self.encode_goal(goal_xy)
         return {
             "q": jnp.squeeze(self.q_head(joint), axis=-1),
-            "soa": self.future_projection(joint),
-            "goal": self.goal_projection(goal_embedding),
+            "future_query": self.future_projection(joint),
+            "goal_query": self.goal_query_projection(joint),
+            "goal_target": self.goal_projection(goal_embedding),
         }
 
 
